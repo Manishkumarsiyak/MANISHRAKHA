@@ -2,9 +2,6 @@ name: Build Raksha AI APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
@@ -14,11 +11,23 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # यदि प्रोजेक्ट ज़िप रूप में है तो अनज़िप करेगा
-      - name: Unzip project if uploaded as zip
+      - name: Locate and Unzip Project
         run: |
-          if [ -f "raksha-ai.zip" ]; then
-            unzip -o raksha-ai.zip
+          # अगर ज़िप फ़ाइल मौजूद है तो उसे अनज़िप करें
+          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Unzipping $ZIP_FILE..."
+            unzip -o "$ZIP_FILE"
+          fi
+          
+          # अगर अनज़िप होने के बाद फाइलें किसी सब-फ़ोल्डर में चली गई हैं तो उन्हें बाहर लाएँ
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            SETTINGS_PATH=$(find . -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
+            if [ -n "$SETTINGS_PATH" ]; then
+              DIR_PATH=$(dirname "$SETTINGS_PATH")
+              echo "Moving files from $DIR_PATH to root..."
+              cp -r "$DIR_PATH"/* .
+            fi
           fi
 
       - name: Set up JDK 17
@@ -27,7 +36,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # मिसिंग debug.keystore को ऑटो-जनरेट करेगा
       - name: Create Debug Keystore
         run: |
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
@@ -39,6 +47,7 @@ jobs:
 
       - name: Build Debug APK
         run: |
+          chmod +x gradlew || true
           gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK
